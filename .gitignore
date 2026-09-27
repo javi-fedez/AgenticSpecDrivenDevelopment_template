@@ -1,0 +1,13 @@
+# ASDD: traza automática y caché de los hooks (no se versionan)
+.asdd/
+
+# Entorno
+.env
+.env.*
+!.env.example
+
+# Sistema / editores
+.DS_Store
+__pycache__/
+*.pyc
+node_modules/
