@@ -12,13 +12,14 @@
 - Versiona los workflows exportados en JSON (`n8n/<Workflow>.json`) para que el cambio sea un
   archivo declarable y revisable.
 - Todos los cambios a un mismo workflow: misma oleada secuencial.
-- Verificación: ejecución de prueba con los nodos clave en *success* y el output esperado
-  pegado en el acta.
+- Verificación: ejecución de prueba vía API/webhook con `asdd-verify.sh` (`local`); si solo se
+  puede comprobar en la interfaz, `manual`.
 
 ## APIs e integraciones
 - Una tarea por endpoint o integración cuando sean independientes (buenas candidatas a paralelo).
 - Verificación con `curl` (status + body), incluyendo al menos un caso de error.
-- Nunca pegues secretos en actas: enmascáralos (`sk_…XXXX`).
+- Nunca pongas secretos en los comandos de verificación: usa variables de entorno
+  (`asdd-verify.sh` enmascara los que detecta, pero entonces la CI no puede reejecutar la tarea).
 
 ## Scripts Python / JS
 - Un archivo por responsabilidad; tareas paralelas si no comparten módulos.

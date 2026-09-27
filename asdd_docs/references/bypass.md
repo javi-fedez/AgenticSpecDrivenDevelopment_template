@@ -11,7 +11,7 @@ sugerirlo: su papel es parar y avisar.
 | Dónde | Efecto |
 |-------|--------|
 | Local (hook de Claude Code) | El guard permite editar cualquier archivo **en la rama cuyo PR abierto tiene el label**. Lo comprueba con `gh pr view` (caché de 5 minutos en `.asdd/bypass-cache.json`). |
-| CI (GitHub Actions) | El check ASDD no valida plan ni actas, **pero exige** la sección `## Motivo del bypass` con contenido real en la descripción del PR. |
+| CI (GitHub Actions) | El check ASDD no valida plan ni verificaciones, **pero exige** la sección `## Motivo del bypass` con contenido real en la descripción del PR. |
 
 En `main`/`master` el bypass nunca aplica en local: siempre se trabaja en una rama con PR.
 

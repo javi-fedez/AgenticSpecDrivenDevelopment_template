@@ -24,14 +24,17 @@ efectivamente carga las instrucciones (pregúntale "¿qué metodología sigue es
 `.claude/settings.json` registra dos hooks:
 
 - **`PreToolUse` → `.claude/hooks/asdd_guard.py`** en `Edit|Write|MultiEdit|NotebookEdit`.
-  Permite siempre escribir en `asdd_docs/`. Fuera de ahí, solo si:
+  En `asdd_docs/verifications/` bloquea cualquier escritura de bloques `ASDD-EVIDENCE` y la
+  reescritura completa de un `.md` que ya tenga evidencias (solo `asdd-verify.sh` las escribe).
+  Permite siempre el resto de `asdd_docs/`. Fuera de ahí, solo si:
   1. hay un plan con `**Estado:** EN EJECUCIÓN` y `**Aprobado:** [x]`,
   2. su SPEC referenciado tiene `**Aprobado:** [x]`,
   3. y el archivo está declarado en ese plan (tabla o líneas `Archivos:`, admite globs y carpetas);
   o bien la rama tiene un PR abierto con `asdd-bypass`. Si no, sale con código 2: la edición se
   bloquea y el agente recibe el motivo. Aplica también a los subagentes.
-- **`PostToolUse` → `.claude/hooks/asdd_log.py`**: añade cada acción a
-  `.asdd/logs/YYYY-MM-DD.jsonl` (fuera de git).
+- **`PostToolUse` → `.claude/hooks/asdd_log.py`**: añade cada acción (entrada y extracto de la
+  respuesta) a `.asdd/logs/YYYY-MM-DD.jsonl` (fuera de git). Sirve para contrastar que los
+  comandos de `asdd-verify.sh` se ejecutaron de verdad.
 
 Requisitos: `python3`; `gh` autenticado para detectar el bypass.
 
@@ -42,8 +45,16 @@ Requisitos: `python3`; `gh` autenticado para detectar el bypass.
 
 - **Con `asdd-bypass`**: exige `## Motivo del bypass` con contenido. Nada más.
 - **Sin label**: si el PR toca algo fuera de `asdd_docs/`, su descripción debe referenciar
-  planes que estén `COMPLETADO` y aprobados, con SPEC aprobado, todas las tareas en `[x]`, un acta
-  `TXX.md` por tarea más `RESUMEN.md`, y **todos** los archivos modificados declarados.
+  planes que estén `COMPLETADO` y aprobados, con SPEC aprobado **del mismo nombre**, todas las
+  tareas en `[x]`, **todos** los archivos modificados declarados y, en
+  `asdd_docs/verifications/<plan>/`, `RESUMEN.md` más un `.md` por tarea que cumpla:
+  - *Qué se hizo* y *Por qué cumple* con contenido, y `Veredicto: APROBADA`;
+  - `local`: última evidencia íntegra (hash correcto), exit 0 y generada sobre un commit de la rama;
+  - `auto`: lo anterior y además **la CI reejecuta el comando** y debe salir 0;
+  - `manual`: `**Verificado por el responsable:** [x]`.
+
+  Las dependencias y secretos que necesiten las tareas `auto` se añaden en el workflow (hay
+  ejemplos comentados).
 - PRs que solo tocan `asdd_docs/` (specs y planes para revisión) pasan siempre.
 
 Para que la CI sea obligatoria: Settings → Branches → regla para `main` → *Require a pull request*
@@ -55,5 +66,9 @@ y *Require status checks to pass* → `Agentic Spec-Driven Development`.
   Lo prohíbe `AGENTS.md`, pero no se bloquea por código. Cierre futuro posible: `CODEOWNERS`
   sobre `asdd_docs/specs/` y `asdd_docs/plans/` + revisión obligatoria.
 - **Escrituras por shell**: el guard vigila las herramientas de edición, no comandos como
-  `echo > archivo` o `sed -i`. La CI lo detecta al comprobar los archivos declarados.
+  `echo > archivo` o `sed -i`. La CI detecta los archivos no declarados y, en las evidencias,
+  cualquier cambio en la salida (hash). Falsificar un bloque completo con su hash exigiría
+  hacerlo deliberadamente; el log local lo delataría y las tareas `auto` se reejecutan igualmente.
+- **Verificaciones `local` y `manual`** no se reejecutan: su fuerza es la evidencia registrada y
+  tu confirmación. Por eso conviene que `T_FINAL` sea `auto`.
 - **Otros asistentes** no tienen el guard local: dependen de la Capa 1 y la CI los frena al hacer PR.
