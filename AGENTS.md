@@ -1,12 +1,14 @@
 # AGENTS.md — Agentic Spec-Driven Development (ASDD)
 
+_Versión del framework: ver `VERSION` (actual: 1.0.0-beta) · cambios en `CHANGELOG.md`_
+
 > **Fuente única de verdad** para cualquier agente de IA que trabaje en este repositorio
 > (Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI, Windsurf u otros).
 > Los archivos `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursor/rules/` y
 > `.windsurf/rules/` solo remiten aquí. **No añadas reglas en ellos.**
 
 ASDD es un método en el que **los agentes hacen todo el ciclo** —escriben el spec, planifican,
-ejecutan en paralelo con subagentes, verifican y levantan acta— y el **humano responsable**
+ejecutan en paralelo con subagentes y verifican cada tarea con evidencia— y el **humano responsable**
 aporta los puntos de aprobación. El spec manda; el agente lo escribe; el humano lo aprueba.
 
 ---
@@ -14,12 +16,12 @@ aporta los puntos de aprobación. El spec manda; el agente lo escribe; el humano
 ## Regla de oro
 
 ```
-SPEC aprobado → PLAN aprobado → EXECUTE por oleadas → ACTA por tarea → VERIFY end-to-end
+SPEC aprobado → PLAN aprobado → EXECUTE por oleadas → VERIFICACIÓN por tarea → T_FINAL end-to-end
 ```
 
 - Sin SPEC aprobado: **para y haz el SPEC**.
 - Sin PLAN aprobado y en estado `EN EJECUCIÓN`: **para y haz el PLAN**.
-- Sin acta escrita: **la tarea no está hecha**.
+- Sin verificación con evidencia: **la tarea no está hecha**.
 - No hay excepciones. Ni para "cambios pequeños". Ni para "solo una línea".
 
 Todo vive en `asdd_docs/`:
@@ -28,14 +30,15 @@ Todo vive en `asdd_docs/`:
 asdd_docs/
 ├── specs/        YYYY-MM-DD-<feature>.md            ← Fase 1
 ├── plans/        YYYY-MM-DD-<feature>.md            ← Fase 2
-├── executions/   YYYY-MM-DD-<feature>/              ← Fase 3
-│                 ├── T01.md … T_FINAL.md            (un acta por tarea)
+├── verifications/ YYYY-MM-DD-<feature>/             ← Fase 3
+│                 ├── T01.md … T_FINAL.md            (un .md por tarea: justificación + evidencias)
 │                 └── RESUMEN.md                     (lo escribe el orquestador)
-├── templates/    spec.md, plan.md, execution.md, resumen.md
+├── templates/    spec.md, plan.md, verification.md, resumen.md
 └── references/   bypass.md, hooks-y-ci.md, debugging.md, tipos-proyecto.md
 ```
 
-El nombre `<feature>` es el mismo en spec, plan y carpeta de actas.
+**Un SPEC = un PLAN, con el mismo nombre de archivo.** Ese `<feature>` es también el nombre de la
+carpeta de verificaciones. Si algo necesita dos planes, son dos SPECs. La CI lo comprueba.
 
 ---
 
@@ -66,8 +69,17 @@ El nombre `<feature>` es el mismo en spec, plan y carpeta de actas.
 2. **Declara todo lo que se va a tocar** en la tabla *Archivos / recursos afectados* y en la
    línea `Archivos:` de cada tarea, siempre entre backticks. **Lo que no esté declarado no se
    podrá editar**: el guard lo bloquea y la CI lo rechaza.
-3. **Tareas atómicas** (2-5 min), cada una con `Archivos`, `Depende de`, `Qué hace` y
-   `Verificar` (concreto y ejecutable).
+3. **Tareas atómicas** (2-5 min), cada una con `Tipo verificación`, `Archivos`, `Depende de`,
+   `Qué hace` y `Verificar` (comando exacto + resultado esperado).
+   **Tipo de verificación** (elige el más fuerte posible):
+   - `auto` → el comando es reproducible fuera de tu máquina (scripts, tests, builds, `curl` a
+     staging). La CI lo **vuelve a ejecutar** en cada PR. Sin secretos en el comando: usa
+     variables de entorno.
+   - `local` → necesita credenciales o sistemas internos. Se ejecuta en local con
+     `asdd-verify.sh` y queda la evidencia registrada.
+   - `manual` → no automatizable (revisión visual, escuchar una llamada…). La confirma el
+     responsable humano.
+   **`T_FINAL` debe ser `auto` siempre que sea posible.**
 4. **Agrupa en oleadas:**
    - **Oleada paralela**: tareas sin dependencias entre sí y **sin archivos ni recursos
      compartidos**.
@@ -78,8 +90,8 @@ El nombre `<feature>` es el mismo en spec, plan y carpeta de actas.
 5. **Cierra siempre con `T_FINAL`**: verificación end-to-end contra todos los criterios de
    aceptación del SPEC.
 6. Si el SPEC cubre subsistemas independientes, **propón planes separados** que funcionen solos.
-7. Usa `asdd_docs/templates/plan.md` → `asdd_docs/plans/YYYY-MM-DD-<feature>.md`, con la
-   referencia al SPEC en la cabecera.
+7. Usa `asdd_docs/templates/plan.md` → `asdd_docs/plans/YYYY-MM-DD-<feature>.md` (mismo nombre
+   que el SPEC), con la referencia al SPEC en la cabecera.
 8. **Espera el "go" explícito.** El humano marca `**Aprobado:** [x]`. Al empezar a ejecutar,
    cambia el estado a `**Estado:** EN EJECUCIÓN` (eso sí lo haces tú, y solo con el plan aprobado).
 
@@ -94,8 +106,8 @@ Nada de "para futuras versiones" en el plan: eso va al SPEC, en *Fuera de alcanc
 | Rol | Qué hace |
 |-----|----------|
 | **Orquestador** | Agente principal. Lee el plan, lanza las oleadas, lanza subagentes, integra resultados, marca `[x]`, escribe `RESUMEN.md`. No implementa tareas de una oleada paralela. |
-| **Implementador** | Subagente con contexto limpio. Recibe **una** tarea (texto de la tarea + SPEC + archivos declarados). Implementa solo eso, ejecuta la verificación y escribe su acta. |
-| **Revisor** | Subagente distinto del implementador. Comprueba 1) que se hizo exactamente lo pedido y cumple el SPEC, 2) calidad. Completa la sección *Revisión* del acta. Si pide cambios, vuelve al implementador. |
+| **Implementador** | Subagente con contexto limpio. Recibe **una** tarea (texto de la tarea + SPEC + archivos declarados). Implementa solo eso, la verifica con `asdd-verify.sh` y escribe su justificación. |
+| **Revisor** | Subagente distinto del implementador. Comprueba 1) que se hizo exactamente lo pedido y cumple el SPEC, 2) calidad, 3) que la evidencia demuestra lo que dice la justificación. Completa *Revisión*. Si pide cambios, vuelve al implementador. |
 
 ### Ciclo por oleada
 
@@ -104,14 +116,26 @@ Nada de "para futuras versiones" en el plan: eso va al SPEC, en *Fuera de alcanc
    detrás de otro.
 3. Cada implementador:
    1. Implementa exactamente su tarea. Nada más.
-   2. Ejecuta la verificación de la tarea.
-   3. Escribe su acta en `asdd_docs/executions/<feature>/TXX.md` con
-      `asdd_docs/templates/execution.md`, **pegando la salida real** de la verificación.
-4. Un revisor revisa cada tarea y completa su acta.
+   2. **Verifica siempre a través de la herramienta**, nunca a mano:
+      ```bash
+      ./scripts/asdd-verify.sh <feature> TXX -- <comando de la tarea>
+      ```
+      Ejecuta el comando y añade a `asdd_docs/verifications/<feature>/TXX.md` un bloque de
+      evidencia (fecha, commit, comando, código de salida, salida real y hash de integridad).
+      Si falla, también queda registrado: corrige y vuelve a ejecutarlo. La CI valida el último.
+      Para tuberías: `-- bash -c "comando | otro"`.
+   3. Completa en ese mismo `.md` (plantilla `asdd_docs/templates/verification.md`) las secciones
+      *Qué se hizo*, *Archivos tocados* y *Por qué cumple*.
+   4. **Nunca escribas ni edites los bloques de evidencia**: el guard lo bloquea y la CI detecta
+      cualquier manipulación por el hash.
+   5. Si el tipo es `manual`, describe en *Verificación manual* qué debe comprobar el responsable
+      y **para**: la casilla la marca él.
+4. Un revisor revisa cada tarea, contrasta justificación y evidencia, y pone
+   `Veredicto: APROBADA` o pide cambios.
 5. Tras una oleada paralela, el orquestador hace una **revisión de integración** de todos los
    cambios juntos (conflictos, acoplamientos no previstos).
-6. El orquestador marca en el plan `[x]` **solo** las tareas con acta, verificación OK y
-   revisión APROBADA.
+6. El orquestador marca en el plan `[x]` **solo** las tareas con evidencia OK (o confirmación
+   manual), justificación completa y revisión APROBADA.
 7. Reporta al humano el resultado de la oleada y pregunta si continúa.
 
 Al terminar `T_FINAL`, el orquestador escribe `RESUMEN.md` con `asdd_docs/templates/resumen.md`
@@ -120,11 +144,11 @@ y cambia el plan a `**Estado:** COMPLETADO`. **Done solo si todos los criterios 
 ### Degradación a modo secuencial
 
 Si tu herramienta **no puede lanzar subagentes**, ejecuta el mismo plan tú solo, oleada a
-oleada y tarea a tarea, en orden. Todo lo demás es igual: acta por tarea, verificación con
-salida real y revisión, que harás en un paso separado releyendo la tarea y el SPEC antes de
-marcar `[x]`. Indica `Ejecutada por: agente único` en el acta y `Modo: secuencial` en el resumen.
+oleada y tarea a tarea, en orden. Todo lo demás es igual: `asdd-verify.sh` por tarea,
+justificación y revisión, que harás en un paso separado releyendo la tarea y el SPEC antes de
+marcar `[x]`. Indica `Ejecutada por: agente único` en el `.md` y `Modo: secuencial` en el resumen.
 
-### Verificación: concreta y ejecutable
+### Verificación: concreta, ejecutable y con evidencia
 
 | Tipo de tarea | Válida | Inválida |
 |---------------|--------|----------|
@@ -138,7 +162,9 @@ marcar `[x]`. Indica `Ejecutada por: agente único` en el acta y `Modo: secuenci
 
 - Implementar más de lo que dice la tarea.
 - Avanzar sin verificar la tarea actual.
-- Marcar `[x]` sin acta, o declarar "listo" sin ejecutar la verificación.
+- Marcar `[x]` sin evidencia de `asdd-verify.sh` (o confirmación manual), o declarar "listo" sin verificar.
+- Escribir o editar bloques `ASDD-EVIDENCE`, o pegar salidas "a mano" como si fueran evidencia.
+- Poner secretos en comandos de verificación: usa variables de entorno.
 - Tocar archivos no declarados en el plan (el guard lo bloqueará igualmente).
 - Marcar tú `**Aprobado:** [x]` en un SPEC o un PLAN.
 - **Poner, pedir a otra herramienta que ponga o sugerir que se ponga el label `asdd-bypass`.**
@@ -148,7 +174,8 @@ marcar `[x]`. Indica `Ejecutada por: agente único` en el acta y `Modo: secuenci
 
 1. **Para.** No parchees tocando otros archivos.
 2. **Diagnostica** la causa raíz (ver `asdd_docs/references/debugging.md`).
-3. **Documenta** el fallo en el acta (Resultado: FALLO, salida real, causa).
+3. **Documenta** el fallo: la evidencia fallida ya queda registrada por `asdd-verify.sh`; añade
+   la causa en el `.md` de la tarea.
 4. **Reporta** al humano: qué falló, por qué y opciones.
 5. Si el plan estaba mal diseñado, **propón el cambio de plan** y espera aprobación.
 
@@ -183,7 +210,8 @@ El **único** mecanismo para saltarse ASDD es el label `asdd-bypass` en un PR, q
 - Nunca trabajes directamente en `main`. Una rama por plan: `asdd/<feature>`.
 - Un commit por tarea: `T03(<feature>): <qué hace>` (imperativo, ≤72 caracteres).
 - El PR referencia el plan en su descripción (plantilla en `.github/pull_request_template.md`).
-  La CI valida plan COMPLETADO, tareas `[x]`, actas y archivos declarados.
+  La CI valida plan COMPLETADO, tareas `[x]`, verificaciones con evidencia íntegra, reejecuta las
+  `auto` y comprueba que todos los archivos modificados estaban declarados.
 
 ## Trazabilidad
 
@@ -191,7 +219,9 @@ El **único** mecanismo para saltarse ASDD es el label `asdd-bypass` en un PR, q
 |-----|-------|------------------|----------|
 | Qué se construye | `asdd_docs/specs/` | Agente, aprueba el humano | Sí |
 | Cómo y en qué orden | `asdd_docs/plans/` | Agente, aprueba el humano | Sí |
-| Qué se hizo y si funcionó | `asdd_docs/executions/` | Agentes (acta obligatoria) | Sí |
+| Qué se hizo y por qué cumple | `asdd_docs/verifications/` (secciones del `.md`) | Agentes | Sí |
+| Prueba de que funciona | `asdd_docs/verifications/` (bloques de evidencia) | `asdd-verify.sh` (nunca el agente) | Sí |
+| Prueba independiente | Reejecución de tareas `auto` | CI de GitHub | Log de Actions |
 | Qué cambió en el código | Commits `TXX(<feature>)` | Agentes | Sí |
 | Traza bruta de cada acción | `.asdd/logs/*.jsonl` | Hook automático (Claude Code) | No |
 
@@ -204,7 +234,7 @@ El **único** mecanismo para saltarse ASDD es el label `asdd-bypass` en un PR, q
         ↓ sí
 ¿PLAN aprobado?  NO → Fase 2
         ↓ sí → Estado: EN EJECUCIÓN
-Oleada 1 → implementadores (+ revisores) → actas → [x]
+Oleada 1 → implementadores → asdd-verify.sh → revisores → [x]
 Oleada 2 → …
 T_FINAL → todos los CA ✓ → RESUMEN.md → Estado: COMPLETADO → PR
 ```
