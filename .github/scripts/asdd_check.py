@@ -12,6 +12,11 @@ Sin label, si el PR toca algo fuera de asdd_docs/, su descripción debe referenc
           local  → última evidencia de asdd-verify íntegra, con exit 0 y commit de la rama;
           auto   → lo mismo y, además, la CI vuelve a ejecutar el comando y debe salir 0;
           manual → "**Verificado por el responsable:** [x]".
+  * Según el **Tipo** del SPEC (evolutivo por defecto):
+      - la sección específica del tipo existe y no tiene marcadores [ … ] sin rellenar;
+      - correctivo → T_FINAL tiene una LÍNEA BASE que FALLA con el mismo comando que la evidencia final;
+      - perfectivo → T_FINAL tiene una LÍNEA BASE que PASA con el mismo comando que la evidencia final;
+      (línea base = evidencia anterior, generada sin cambios de código respecto a main).
 
 Variables de entorno: PR_BODY, PR_LABELS (JSON), BASE_SHA, HEAD_SHA.
 """
@@ -44,6 +49,14 @@ EVIDENCE_DATA_RE = re.compile(r"<!-- ASDD-EVIDENCE:DATA (\{.*?\}) -->")
 EVIDENCE_OUT_RE = re.compile(r"~~~~text\n(.*?)\n~~~~", re.S)
 MANUAL_OK_RE = re.compile(r"\*\*Verificado por el responsable:\*\*\s*\[[xX]\]")
 VERDICT_OK_RE = re.compile(r"Veredicto:\s*\**APROBADA", re.I)
+SPEC_TYPE_RE = re.compile(r"\*\*Tipo:\*\*\s*(\w+)", re.I)
+SPEC_TYPES = {
+    "evolutivo": "Evolutivo: alcance funcional",
+    "correctivo": "Correctivo: el fallo",
+    "adaptativo": "Adaptativo: el cambio externo",
+    "perfectivo": "Perfectivo: la mejora",
+}
+PLACEHOLDER_RE = re.compile(r":\*\*\s*`?\[[^\]]+\]`?\s*$")
 
 
 def git(*args: str) -> subprocess.CompletedProcess:
@@ -97,21 +110,82 @@ def parse_tasks(plan_text: str) -> list[dict]:
     return tasks
 
 
+def parse_evidence(block: str) -> tuple[dict | None, str]:
+    data_m, out_m = EVIDENCE_DATA_RE.search(block), EVIDENCE_OUT_RE.search(block)
+    if not data_m or not out_m:
+        return None, "evidencia mal formada (¿editada a mano?)"
+    try:
+        data = json.loads(data_m.group(1))
+    except ValueError:
+        return None, "evidencia con datos ilegibles (¿editada a mano?)"
+    if hashlib.sha256(out_m.group(1).encode("utf-8")).hexdigest() != data.get("out_sha256"):
+        return None, "la salida de la evidencia no coincide con su hash (editada a mano)"
+    return data, ""
+
+
 def last_evidence(text: str) -> tuple[dict | None, str]:
     blocks = EVIDENCE_RE.findall(text)
     if not blocks:
         return None, "no tiene evidencia de asdd-verify"
-    block = blocks[-1]
-    data_m, out_m = EVIDENCE_DATA_RE.search(block), EVIDENCE_OUT_RE.search(block)
-    if not data_m or not out_m:
-        return None, "la última evidencia está mal formada (¿editada a mano?)"
-    try:
-        data = json.loads(data_m.group(1))
-    except ValueError:
-        return None, "la última evidencia tiene datos ilegibles (¿editada a mano?)"
-    if hashlib.sha256(out_m.group(1).encode("utf-8")).hexdigest() != data.get("out_sha256"):
-        return None, "la salida de la última evidencia no coincide con su hash (editada a mano)"
-    return data, ""
+    data, problem = parse_evidence(blocks[-1])
+    return data, (f"la última {problem}" if problem else "")
+
+
+def code_unchanged(sha: str, merge_base: str) -> bool:
+    """True si entre main (merge-base) y `sha` no cambió nada fuera de asdd_docs/."""
+    if git("merge-base", "--is-ancestor", merge_base, sha).returncode != 0 and sha != merge_base:
+        # sha anterior a la rama: vale si es ancestro del merge-base (código de main)
+        return git("merge-base", "--is-ancestor", sha, merge_base).returncode == 0
+    diff = git("diff", "--name-only", merge_base, sha).stdout.splitlines()
+    return not [f for f in diff if f.strip() and not f.startswith(f"{DOCS_DIR}/")]
+
+
+def check_baseline(vfile: Path, change_type: str, merge_base: str) -> list[str]:
+    """Correctivo: línea base que FALLA. Perfectivo: línea base que PASA. Mismo comando que la final."""
+    label = str(vfile)
+    if not vfile.exists():
+        return []  # ya se informa como acta ausente
+    blocks = EVIDENCE_RE.findall(vfile.read_text(encoding="utf-8"))
+    parsed = [parse_evidence(b)[0] for b in blocks]
+    if not parsed or parsed[-1] is None:
+        return []  # la evidencia final ya se valida aparte
+    final = parsed[-1]
+    want_fail = change_type == "correctivo"
+    for data in parsed[:-1]:
+        if not data or data.get("cmd") != final.get("cmd") or data.get("ts", "") >= final.get("ts", ""):
+            continue
+        if (data.get("exit") != 0) != want_fail:
+            continue
+        if data.get("dirty_code", True):
+            continue
+        if code_unchanged(data.get("sha", ""), merge_base):
+            return []
+    esperado = "FALLE (reproduce el bug)" if want_fail else "PASE (fija el comportamiento)"
+    return [
+        f"{label}: {change_type} sin línea base válida. Antes de tocar código hay que ejecutar "
+        f"asdd-verify con el mismo comando que la evidencia final y que {esperado}, sin cambios de "
+        f"código respecto a main."
+    ]
+
+
+def check_spec_type(spec: Path, spec_text: str) -> tuple[str, list[str]]:
+    m = SPEC_TYPE_RE.search(spec_text)
+    change_type = m.group(1).lower() if m else "evolutivo"
+    if change_type not in SPEC_TYPES:
+        return change_type, [f"{spec}: Tipo '{change_type}' no válido ({', '.join(SPEC_TYPES)})."]
+    title = SPEC_TYPES[change_type]
+    sm = re.search(rf"^##\s*{re.escape(title)}\s*$(.*?)(?=^##\s|\Z)", spec_text, re.M | re.S)
+    if not sm:
+        if m:  # SPEC antiguo sin campo Tipo: retrocompatible
+            return change_type, [f"{spec}: falta la sección '## {title}' propia del tipo {change_type}."]
+        return change_type, []
+    pending = [
+        l.strip() for l in sm.group(1).splitlines()
+        if PLACEHOLDER_RE.search(l) and "Métrica" not in l
+    ]
+    if pending:
+        return change_type, [f"{spec}: la sección '{title}' tiene campos sin rellenar: {pending[0][:60]}"]
+    return change_type, []
 
 
 def check_evidence(label: str, data: dict, head: str) -> list[str]:
@@ -139,8 +213,9 @@ def rerun(label: str, cmd: str) -> list[str]:
     return []
 
 
-def check_plan(plan_path: str, head: str) -> tuple[list[str], set[str]]:
+def check_plan(plan_path: str, head: str, merge_base: str) -> tuple[list[str], set[str]]:
     errors: list[str] = []
+    change_type = "evolutivo"
     plan = Path(plan_path)
     if not plan.exists():
         return [f"El plan referenciado no existe: {plan_path}"], set()
@@ -161,8 +236,12 @@ def check_plan(plan_path: str, head: str) -> tuple[list[str], set[str]]:
             errors.append(f"{plan_path}: el SPEC ({spec.name}) debe tener el mismo nombre que el plan.")
         if not spec.exists():
             errors.append(f"{plan_path}: el SPEC {spec} no existe.")
-        elif not APPROVED_RE.search(spec.read_text(encoding="utf-8")):
-            errors.append(f"{spec}: el SPEC no está aprobado.")
+        else:
+            spec_text = spec.read_text(encoding="utf-8")
+            if not APPROVED_RE.search(spec_text):
+                errors.append(f"{spec}: el SPEC no está aprobado.")
+            change_type, type_errors = check_spec_type(spec, spec_text)
+            errors.extend(type_errors)
 
     tasks = parse_tasks(text)
     if not tasks:
@@ -199,6 +278,14 @@ def check_plan(plan_path: str, head: str) -> tuple[list[str], set[str]]:
                               "reejecutarlo. Usa variables de entorno y secrets de GitHub.")
             else:
                 errors.extend(rerun(label, data["cmd"]))
+    if change_type in ("correctivo", "perfectivo"):
+        final_task = next((tk for tk in tasks if tk["id"] == "T_FINAL"), None)
+        if not final_task:
+            errors.append(f"{plan_path}: un {change_type} necesita T_FINAL con la verificación de línea base.")
+        elif final_task["type"] == "manual":
+            errors.append(f"{plan_path}: en un {change_type}, T_FINAL no puede ser manual (necesita línea base).")
+        else:
+            errors.extend(check_baseline(vdir / "T_FINAL.md", change_type, merge_base))
     if not (vdir / "RESUMEN.md").exists():
         errors.append(f"Falta {vdir}/RESUMEN.md")
     return errors, declared_paths(text)
@@ -236,10 +323,11 @@ def main() -> None:
     if not plan_refs:
         fail(["El PR modifica código pero su descripción no referencia ningún plan (asdd_docs/plans/…md)."])
 
+    merge_base = git("merge-base", base, head).stdout.strip() or base
     errors: list[str] = []
     declared: set[str] = set()
     for ref in plan_refs:
-        plan_errors, paths = check_plan(ref, head)
+        plan_errors, paths = check_plan(ref, head, merge_base)
         errors.extend(plan_errors)
         declared |= paths
     for f in code_files:

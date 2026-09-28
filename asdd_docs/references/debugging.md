@@ -1,5 +1,8 @@
 # Protocolo de debugging
 
+> En un SPEC **correctivo**, este protocolo alimenta la *Causa raíz* y el comando de la línea
+> base: primero se consigue una verificación que reproduzca el fallo (exit ≠ 0), después se arregla.
+
 Cuando una verificación falla o algo "que debería funcionar" no funciona.
 
 1. **Para.** No toques más archivos. No "pruebes a ver" cambios encadenados.

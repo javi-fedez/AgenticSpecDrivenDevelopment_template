@@ -14,6 +14,15 @@ _Fecha: YYYY-MM-DD_
 | `supabase/migrations/2026XXXX_x.sql` | MIGRACIÓN | [Qué cambia] |
 | `n8n/Workflow_X.json` | MODIFICAR | [Qué nodo y por qué] |
 
+## Línea base (solo correctivo y perfectivo)
+<!-- ANTES de tocar ningún archivo de código, ejecuta la verificación de T_FINAL sobre el código actual:
+       ./scripts/asdd-verify.sh YYYY-MM-DD-<feature> T_FINAL -- <comando de T_FINAL>
+     correctivo → debe FALLAR (demuestra que el fallo existe y que la verificación lo detecta)
+     perfectivo → debe PASAR  (fija el comportamiento que no puede cambiar; si hay métrica, que la imprima)
+     La CI exige esa evidencia de línea base: mismo comando que la evidencia final, generada sin cambios
+     de código respecto a main. Para evolutivo y adaptativo, borra esta sección. -->
+- [ ] Línea base registrada en `asdd_docs/verifications/YYYY-MM-DD-<feature>/T_FINAL.md`
+
 ## Oleadas
 <!-- Dentro de una oleada paralela, ninguna tarea comparte archivos ni recursos.
      Migraciones de Supabase y cambios en el mismo workflow de n8n: SIEMPRE oleada secuencial.
@@ -51,6 +60,7 @@ _Fecha: YYYY-MM-DD_
   - Tipo verificación: auto
   - Archivos: —
   - Verificar: `[comando que ejerce todo el flujo]` → [resultado esperado]
+  - Correctivo/perfectivo: MISMO comando que la línea base (el de la sección específica del SPEC)
   - Criterios de aceptación del SPEC: CA1 ✓, CA2 ✓, CA3 ✓
   - Done solo si todos los CA pasan
 

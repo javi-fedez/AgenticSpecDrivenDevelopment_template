@@ -1,6 +1,6 @@
 # AgenticSpecDrivenDevelopment_template — Agentic Spec-Driven Development
 
-**Versión:** `1.0.0-beta` · [Changelog](CHANGELOG.md)
+**Versión:** `1.1.0-beta` · [Changelog](CHANGELOG.md)
 
 Plantilla de repositorio para trabajar con agentes de IA bajo **ASDD**: los agentes escriben el
 spec, planifican, ejecutan en paralelo con subagentes, verifican cada tarea con evidencia
@@ -45,6 +45,19 @@ asdd_docs/verifications/2026-10-01-alta-clientes/
 .asdd/logs/2026-10-01.jsonl                        ← traza automática (no se versiona)
 ```
 
+## Tipos de cambio
+
+Cada SPEC declara su tipo, y la CI exige la prueba que le corresponde:
+
+| Tipo | Ejemplo | Prueba específica |
+|------|---------|-------------------|
+| **Evolutivo** | Añadir Bizum como método de pago | Criterios de aceptación en `T_FINAL` |
+| **Correctivo** | El checkout falla en móviles | Línea base que **falla** antes del arreglo y pasa después (mismo comando) |
+| **Adaptativo** | Adaptarse a una nueva normativa o versión de iOS | Criterios de aceptación + referencia al cambio externo |
+| **Perfectivo** | Pasar la carga de 3 s a 1 s sin cambiar nada visible | Línea base que **pasa** antes y después (comportamiento idéntico) + métrica |
+
+Un tipo por SPEC: si un cambio mezcla tipos, son dos SPECs. Detalle en [`AGENTS.md`](AGENTS.md#tipos-de-cambio).
+
 ## ¿Cómo sé que las verificaciones se han hecho?
 
 Cada `.md` de `verifications/` separa lo que **dice el agente** de lo que **registró la máquina**:
@@ -77,7 +90,9 @@ ASDD sigue [SemVer](https://semver.org/lang/es/): `MAYOR.MENOR.PARCHE[-pre]`.
   y la actual y copia los archivos afectados (`AGENTS.md`, `.claude/`, `.github/`, `scripts/`,
   `asdd_docs/templates/`, `asdd_docs/references/`). Nunca sobrescribas sus `specs/`, `plans/` ni
   `verifications/`.
-- Los cambios en el propio framework se hacen siguiendo ASDD en este repositorio.
+- Los cambios en el propio framework se documentan en el changelog y se publican con tag y
+  release. La carpeta `asdd_docs/` de la plantilla se mantiene **sin specs, planes ni
+  verificaciones**, para que cada proyecto nazca limpio.
 
 ## Documentación
 

@@ -1,6 +1,6 @@
 # AGENTS.md — Agentic Spec-Driven Development (ASDD)
 
-_Versión del framework: ver `VERSION` (actual: 1.0.0-beta) · cambios en `CHANGELOG.md`_
+_Versión del framework: ver `VERSION` (actual: 1.1.0-beta) · cambios en `CHANGELOG.md`_
 
 > **Fuente única de verdad** para cualquier agente de IA que trabaje en este repositorio
 > (Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI, Windsurf u otros).
@@ -42,14 +42,58 @@ carpeta de verificaciones. Si algo necesita dos planes, son dos SPECs. La CI lo 
 
 ---
 
+## Tipos de cambio
+
+Todo SPEC declara **un** tipo (`**Tipo:**`). Las fases, oleadas y verificaciones son las mismas;
+lo que cambia es **qué debe responder el SPEC** y **qué prueba exige la CI**.
+
+| Tipo | Cuándo | El SPEC debe responder | Prueba exigida | Prefijo |
+|------|--------|------------------------|----------------|---------|
+| `evolutivo` | Añadir o ampliar funcionalidad | Qué se añade, para quién, cómo se usa | Criterios de aceptación en `T_FINAL` | `feat-` |
+| `correctivo` | Corregir un fallo | Reproducción, actual vs esperado, causa raíz | **Línea base que FALLA** y final que pasa, con el mismo comando | `fix-` |
+| `adaptativo` | Cambio externo (normativa, SO, API…) | Qué cambió, referencia, fecha límite, qué no debe romperse | Criterios de aceptación en `T_FINAL` | `adapt-` |
+| `perfectivo` | Mejorar código, rendimiento o seguridad sin cambiar el comportamiento | Qué se mejora, qué NO puede cambiar, métrica | **Línea base que PASA** y final que pasa, con el mismo comando | `refactor-` |
+
+- **Un tipo por SPEC.** Si un cambio mezcla tipos (p. ej. refactorizar y añadir una función),
+  son **dos SPECs** y dos planes. Así, si algo se rompe, se sabe qué lo rompió.
+- Elige el tipo **dominante**; no hace falta precisión académica.
+- **Prefijo en el nombre** (recomendado): `2026-10-02-fix-checkout-movil.md`, rama
+  `asdd/2026-10-02-fix-checkout-movil`.
+- Sin campo `Tipo`, la CI trata el SPEC como `evolutivo` (retrocompatible).
+
+### Línea base (correctivo y perfectivo)
+
+Es la prueba de que el cambio hace lo que dice:
+
+- **Correctivo:** demuestra que el fallo **existe** y que la verificación lo **detecta**; después,
+  que el arreglo lo corrige. La verificación queda como prueba de no regresión.
+- **Perfectivo:** fija el comportamiento **antes** de tocar nada y demuestra que **después** es idéntico.
+
+Procedimiento (antes de modificar cualquier archivo de código, con el SPEC y el PLAN aprobados):
+```bash
+./scripts/asdd-verify.sh <feature> T_FINAL -- <comando de verificación del SPEC>
+```
+El resultado debe ser **exit ≠ 0 en un correctivo** y **exit 0 en un perfectivo**. Después se
+implementa y se ejecuta **el mismo comando**, que debe dar exit 0. La CI exige que la línea base
+exista, que use el mismo comando que la evidencia final y que se generara **sin cambios de código
+respecto a `main`** (solo cambios en `asdd_docs/`). Si el perfectivo tiene métrica, el comando debe
+imprimirla, para que quede el antes y el después en las evidencias. `T_FINAL` no puede ser `manual`
+en estos dos tipos.
+
+---
+
 ## FASE 1 — SPEC
 
 1. **Explora el contexto** antes de preguntar: este archivo, código existente, esquema de
    Supabase, workflows de n8n, specs y planes anteriores.
+   **Determina primero el tipo de cambio** y, si mezcla tipos, propón dividirlo en varios SPECs.
 2. **Pregunta de una en una.** Prefiere opción múltiple. Aplica YAGNI: saca todo lo que no sea
    imprescindible para esta versión.
 3. **Propón 2-3 enfoques** con sus trade-offs antes de decidir.
 4. **Escribe el SPEC** con `asdd_docs/templates/spec.md` en `asdd_docs/specs/YYYY-MM-DD-<feature>.md`.
+   Rellena **solo la sección específica de su tipo** y borra las otras tres. La CI rechaza la
+   sección del tipo si quedan marcadores `[ … ]` sin rellenar. En un correctivo, la *Causa raíz* se
+   completa tras diagnosticar (ver `asdd_docs/references/debugging.md`).
 5. **Preséntalo por secciones** y valida cada una.
 6. **Autorrevisión antes de presentarlo:**
    - ¿Todos los criterios de aceptación son verificables sin ambigüedad?
@@ -88,7 +132,8 @@ carpeta de verificaciones. Si algo necesita dos planes, son dos SPECs. La CI lo 
      cualquier cosa que toque una misma tabla, API externa con estado o archivo de configuración
      compartido. Ante la duda, secuencial.
 5. **Cierra siempre con `T_FINAL`**: verificación end-to-end contra todos los criterios de
-   aceptación del SPEC.
+   aceptación del SPEC. En correctivo y perfectivo, usa el comando de verificación de la sección
+   específica del SPEC y mantén la sección *Línea base* del plan.
 6. Si el SPEC cubre subsistemas independientes, **propón planes separados** que funcionen solos.
 7. Usa `asdd_docs/templates/plan.md` → `asdd_docs/plans/YYYY-MM-DD-<feature>.md` (mismo nombre
    que el SPEC), con la referencia al SPEC en la cabecera.
@@ -234,6 +279,7 @@ El **único** mecanismo para saltarse ASDD es el label `asdd-bypass` en un PR, q
         ↓ sí
 ¿PLAN aprobado?  NO → Fase 2
         ↓ sí → Estado: EN EJECUCIÓN
+(correctivo/perfectivo) Línea base: asdd-verify T_FINAL antes de tocar código
 Oleada 1 → implementadores → asdd-verify.sh → revisores → [x]
 Oleada 2 → …
 T_FINAL → todos los CA ✓ → RESUMEN.md → Estado: COMPLETADO → PR

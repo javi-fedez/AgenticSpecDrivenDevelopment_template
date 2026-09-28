@@ -89,7 +89,12 @@ def main() -> int:
     raw_cmd = shlex.join(cmd)
     cmd_str = mask(raw_cmd)
     sha = git("rev-parse", "HEAD") or "sin-commit"
-    dirty = bool(git("status", "--porcelain"))
+    status = git("status", "--porcelain")
+    dirty = bool(status)
+    # ¿Hay cambios sin commitear FUERA de asdd_docs/? (clave para validar líneas base)
+    dirty_code = any(
+        line and not line[3:].strip('"').startswith("asdd_docs/") for line in status.splitlines()
+    )
 
     data = {
         "task": task,
@@ -97,6 +102,7 @@ def main() -> int:
         "duration_s": round(duration, 1),
         "sha": sha,
         "dirty": dirty,
+        "dirty_code": dirty_code,
         "cmd": cmd_str,
         "cmd_masked": cmd_str != raw_cmd,
         "exit": exit_code,
