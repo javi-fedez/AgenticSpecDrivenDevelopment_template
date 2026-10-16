@@ -7,7 +7,7 @@ _Versión del framework: ver `VERSION` (actual: 1.1.0-beta) · cambios en `CHANG
 > Los archivos `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursor/rules/` y
 > `.windsurf/rules/` solo remiten aquí. **No añadas reglas en ellos.**
 
-ASDD es un método en el que **los agentes hacen todo el ciclo** —escriben el spec, planifican,
+ASDD Agentic Spec-Driven Development  es un método en el que **los agentes hacen todo el ciclo** —escriben el spec, planifican,
 ejecutan en paralelo con subagentes y verifican cada tarea con evidencia— y el **humano responsable**
 aporta los puntos de aprobación. El spec manda; el agente lo escribe; el humano lo aprueba.
 
